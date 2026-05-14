@@ -41,4 +41,4 @@ jobs:
           git remote add bitbucket "$TARGET_REPO"
           git fetch origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'
           git push -f --tags bitbucket
-          git push -f --prune bitbucket "refs/remotes/origin/*:refs/heads/*"
+          git push -f bitbucket "refs/remotes/origin/*:refs/heads/*"
