@@ -1,0 +1,44 @@
+name: Mirroring
+
+on: [push, delete]
+
+concurrency:
+  group: mirror-bitbucket
+  cancel-in-progress: true
+
+jobs:
+  to_bitbucket:
+    runs-on: ubuntu-latest
+    steps:                                              # <-- must use actions/checkout before mirroring!
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Configure SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.BITBUCKET_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s\n" "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan bitbucket.org >> ~/.ssh/known_hosts
+
+      # Historically: pixta-dev/repository-mirroring-action@v1 ran (see mirror.sh):
+      #   git push --tags --force --prune mirror "refs/remotes/origin/*:refs/heads/*"
+      # That updates every branch from GitHub’s origin/* and --prune removes Bitbucket-only branches
+      # that no longer exist on GitHub (stale branches).
+      #
+      # Commit c4acdeca switched to raw `git push --mirror`, which mirrors refs/heads/* on the runner.
+      # Checkout only has one local branch there, so Git tried to DELETE almost every branch on Bitbucket,
+      # including master (Bitbucket blocks deleting the default branch → error).
+      #
+      # We keep concurrency (single-flight) from that commit but restore pixta-style pushes, not --mirror.
+      - name: Mirror branches and tags to Bitbucket
+        env:
+          TARGET_REPO: git@bitbucket.org:${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          git remote add bitbucket "$TARGET_REPO"
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'
+          git push -f --tags bitbucket
+          git push -f --prune bitbucket "refs/remotes/origin/*:refs/heads/*"
